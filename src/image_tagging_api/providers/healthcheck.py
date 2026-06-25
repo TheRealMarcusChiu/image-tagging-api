@@ -44,7 +44,7 @@ class HttpProviderStartupChecker:
 
         checks: list[ProviderCredentialCheck] = []
         async with self._client(settings) as client:
-            if settings.anthropic_api_key:
+            if settings.anthropic_auth_headers():
                 checks.append(await self._check_anthropic(client, settings))
             if settings.openai_api_key:
                 checks.append(await self._check_openai(client, settings))
@@ -69,7 +69,7 @@ class HttpProviderStartupChecker:
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
-                    "x-api-key": settings.anthropic_api_key or "",
+                    **settings.anthropic_auth_headers(),
                     "anthropic-version": "2023-06-01",
                     "content-type": "application/json",
                 },
@@ -130,7 +130,7 @@ class HttpProviderStartupChecker:
                 provider=provider,
                 configured=True,
                 ok=True,
-                message=f"{provider} API key accepted.",
+                message=f"{provider} credential accepted.",
             )
         return ProviderCredentialCheck(
             provider=provider,

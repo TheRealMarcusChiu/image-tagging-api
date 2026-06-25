@@ -61,3 +61,32 @@ async def test_http_startup_checker_reports_invalid_anthropic_key():
     assert "HTTP 401" in checks[0].message
     assert "invalid x-api-key" in checks[0].message
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_http_startup_checker_tests_claude_code_oauth_token_with_bearer_auth():
+    captured = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "ok"}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    checker = HttpProviderStartupChecker(client=client)
+
+    checks = await checker.check_configured_providers(
+        Settings(
+            anthropic_api_key=None,
+            claude_code_oauth_token="oauth-token",
+            openai_api_key=None,
+            gemini_api_key=None,
+        )
+    )
+
+    assert len(checks) == 1
+    assert checks[0].provider == "anthropic"
+    assert checks[0].ok is True
+    assert captured["headers"]["authorization"] == "Bearer oauth-token"
+    assert "x-api-key" not in captured["headers"]
+    assert captured["headers"]["anthropic-version"] == "2023-06-01"
+    await client.aclose()

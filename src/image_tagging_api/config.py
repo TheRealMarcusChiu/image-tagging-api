@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    anthropic_auth_token: str | None = Field(default=None, alias="ANTHROPIC_AUTH_TOKEN")
+    claude_code_oauth_token: str | None = Field(default=None, alias="CLAUDE_CODE_OAUTH_TOKEN")
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
 
@@ -33,3 +35,12 @@ class Settings(BaseSettings):
             "ollama": self.default_ollama_model,
         }
         return defaults[provider]
+
+    def anthropic_auth_headers(self) -> dict[str, str]:
+        """Build Anthropic auth headers without exposing credential values."""
+        bearer_token = self.anthropic_auth_token or self.claude_code_oauth_token
+        if bearer_token:
+            return {"Authorization": f"Bearer {bearer_token}"}
+        if self.anthropic_api_key:
+            return {"x-api-key": self.anthropic_api_key}
+        return {}

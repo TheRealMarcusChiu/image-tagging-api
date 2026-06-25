@@ -125,7 +125,15 @@ class OpenAIProvider(VisionProvider):
 
 class AnthropicProvider(VisionProvider):
     async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
-        key = self.require_key(self.settings.anthropic_api_key, "ANTHROPIC_API_KEY")
+        auth_headers = self.settings.anthropic_auth_headers()
+        if not auth_headers:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or "
+                    "CLAUDE_CODE_OAUTH_TOKEN is required for this provider."
+                ),
+            )
         content: list[dict[str, Any]] = [{"type": "text", "text": build_prompt(request)}]
         for image in request.images:
             content.append(
@@ -140,7 +148,7 @@ class AnthropicProvider(VisionProvider):
             )
         response = await self.client.post(
             "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+            headers={**auth_headers, "anthropic-version": "2023-06-01"},
             json={
                 "model": request.model,
                 "max_tokens": 2048,

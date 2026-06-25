@@ -98,3 +98,58 @@ async def test_openai_provider_uses_selected_model_and_image_payload(
         "data:image/png;base64,"
     )
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_anthropic_provider_uses_claude_code_oauth_token_as_bearer_auth():
+    captured = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "images": [
+                                    {
+                                        "filename": "cat.png",
+                                        "tags": ["cat"],
+                                        "confidence": 0.9,
+                                        "explanation": "A cat.",
+                                    }
+                                ]
+                            }
+                        ),
+                    }
+                ]
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tagger = MultiProviderImageTagger(
+        Settings(claude_code_oauth_token="oauth-token", anthropic_api_key=None),
+        client=client,
+    )
+
+    response = await tagger.tag_images(
+        ProviderRequest(
+            provider="anthropic",
+            model="claude-3-5-sonnet-latest",
+            images=[ImageInput(filename="cat.png", content=b"image-bytes", mime_type="image/png")],
+            candidate_tags=None,
+            max_tags=3,
+            include_explanations=True,
+        )
+    )
+
+    assert response.results[0].tags == ["cat"]
+    assert captured["headers"]["authorization"] == "Bearer oauth-token"
+    assert "x-api-key" not in captured["headers"]
+    assert captured["headers"]["anthropic-version"] == "2023-06-01"
+    assert captured["body"]["model"] == "claude-3-5-sonnet-latest"
+    await client.aclose()
