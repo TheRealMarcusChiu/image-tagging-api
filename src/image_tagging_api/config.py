@@ -3,6 +3,10 @@ from __future__ import annotations
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEPRECATED_ANTHROPIC_MODEL_ALIASES = {
+    "claude-3-5-sonnet-latest": "claude-sonnet-4-6",
+}
+
 
 class Settings(BaseSettings):
     """Runtime configuration loaded from environment variables."""
@@ -33,7 +37,9 @@ class Settings(BaseSettings):
     def default_model_for(self, provider: str) -> str:
         defaults = {
             "openai": self.default_openai_model,
-            "anthropic": self.default_anthropic_model,
+            "anthropic": DEPRECATED_ANTHROPIC_MODEL_ALIASES.get(
+                self.default_anthropic_model, self.default_anthropic_model
+            ),
             "gemini": self.default_gemini_model,
             "ollama": self.default_ollama_model,
         }

@@ -34,8 +34,8 @@ class RecordingTagger(ImageTagger):
         )
 
 
-def build_client(tagger: RecordingTagger) -> TestClient:
-    app = create_app(settings=Settings(), tagger=tagger)
+def build_client(tagger: RecordingTagger, settings: Settings | None = None) -> TestClient:
+    app = create_app(settings=settings or Settings(), tagger=tagger)
     return TestClient(app)
 
 
@@ -83,6 +83,24 @@ def test_multipart_endpoint_tags_batch_and_forwards_model_choice():
     assert forwarded.candidate_tags == ["cat", "dog", "indoor"]
     assert forwarded.max_tags == 2
     assert forwarded.include_explanations is True
+
+
+def test_multipart_endpoint_maps_stale_default_anthropic_model_when_model_omitted():
+    tagger = RecordingTagger()
+    client = build_client(
+        tagger,
+        Settings(default_anthropic_model="claude-3-5-sonnet-latest"),
+    )
+
+    response = client.post(
+        "/v1/tag",
+        data={"provider": "anthropic"},
+        files=[("images", ("shirt.png", PNG_BYTES, "image/png"))],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["model"] == "claude-sonnet-4-6"
+    assert tagger.calls[0].model == "claude-sonnet-4-6"
 
 
 def test_json_endpoint_accepts_base64_images():

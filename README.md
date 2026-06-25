@@ -66,6 +66,8 @@ For Claude Max/Pro subscription auth, generate a token with `claude setup-token`
 
 The startup Anthropic credential check intentionally uses `ANTHROPIC_STARTUP_CHECK_MODEL` instead of `DEFAULT_ANTHROPIC_MODEL`, so a stale request-default model cannot break the startup credential probe. Override `ANTHROPIC_STARTUP_CHECK_MODEL` only if Anthropic changes model availability for your account.
 
+If `DEFAULT_ANTHROPIC_MODEL` is still set to the deprecated `claude-3-5-sonnet-latest`, the API maps omitted-model Anthropic requests to `claude-sonnet-4-6`. You should still update the env file to avoid confusion.
+
 Startup check results are logged and exposed from `/health` under `credential_checks`. The server still starts if a credential is invalid so you can inspect `/health` and logs. Disable checks with:
 
 ```env
