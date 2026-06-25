@@ -8,10 +8,10 @@ Wants=network-online.target
 Type=simple
 User=root
 Group=root
-WorkingDirectory=/opt/image-tagging-api
-EnvironmentFile=-/etc/image-tagging-api/image-tagging-api.env
-ExecStart=/opt/image-tagging-api/.venv/bin/uvicorn image_tagging_api.main:app --host 0.0.0.0 --port 8000
-Restart=on-failure
+WorkingDirectory=/root/image-tagging-api
+# EnvironmentFile=/root/image-tagging-api/image-tagging-api.env
+ExecStart=/root/image-tagging-api/.venv/bin/uvicorn image_tagging_api.main:app --host 0.0.0.0 --port 8000
+Restart=always
 RestartSec=5
 TimeoutStopSec=30
 KillSignal=SIGINT
@@ -20,8 +20,8 @@ KillSignal=SIGINT
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ProtectHome=true
-ReadWritePaths=/opt/image-tagging-api
+ProtectHome=false
+ReadWritePaths=/root/image-tagging-api
 
 [Install]
 WantedBy=multi-user.target
