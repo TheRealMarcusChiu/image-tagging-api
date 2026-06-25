@@ -209,6 +209,11 @@ class MultiProviderImageTagger(ImageTagger):
             "ollama": OllamaProvider(settings, client),
         }
 
+    @staticmethod
+    def _describe_http_error(exc: httpx.HTTPError) -> str:
+        message = str(exc).strip()
+        return message or exc.__class__.__name__
+
     async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
         try:
             return await self.providers[request.provider].tag_images(request)
@@ -235,7 +240,10 @@ class MultiProviderImageTagger(ImageTagger):
         except httpx.HTTPError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Provider {request.provider} request failed: {exc}",
+                detail=(
+                    f"Provider {request.provider} request failed: "
+                    f"{self._describe_http_error(exc)}"
+                ),
             ) from exc
         except ProviderError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc

@@ -195,3 +195,36 @@ async def test_provider_rate_limit_is_returned_as_client_429():
     assert "rate limited" in exc_info.value.detail
     assert "retry after 30 seconds" in exc_info.value.detail
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_provider_request_failure_includes_exception_type_and_message():
+    transport = httpx.MockTransport(
+        lambda request: (_ for _ in ()).throw(httpx.ConnectError("", request=request))
+    )
+    client = httpx.AsyncClient(transport=transport)
+    tagger = MultiProviderImageTagger(Settings(), client=client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await tagger.tag_images(
+            ProviderRequest(
+                provider="ollama",
+                model="llava:latest",
+                images=[
+                    ImageInput(
+                        filename="cat.png",
+                        content=b"image-bytes",
+                        mime_type="image/png",
+                    )
+                ],
+                candidate_tags=None,
+                max_tags=3,
+                include_explanations=True,
+            )
+        )
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == (
+        "Provider ollama request failed: ConnectError"
+    )
+    await client.aclose()
