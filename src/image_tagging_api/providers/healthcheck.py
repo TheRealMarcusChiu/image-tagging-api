@@ -132,6 +132,16 @@ class HttpProviderStartupChecker:
                 ok=True,
                 message=f"{provider} credential accepted.",
             )
+        if provider == "anthropic" and response.status_code == 429:
+            return ProviderCredentialCheck(
+                provider=provider,
+                configured=True,
+                ok=True,
+                message=(
+                    "anthropic credential was accepted, but the startup probe was rate limited: "
+                    f"{response.text}"
+                ),
+            )
         return ProviderCredentialCheck(
             provider=provider,
             configured=True,

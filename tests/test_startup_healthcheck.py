@@ -89,6 +89,30 @@ async def test_http_startup_checker_reports_invalid_anthropic_key():
 
 
 @pytest.mark.asyncio
+async def test_http_startup_checker_treats_anthropic_rate_limit_as_credential_accepted():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429,
+            json={
+                "type": "error",
+                "error": {"type": "rate_limit_error", "message": "Error"},
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    checker = HttpProviderStartupChecker(client=client)
+
+    checks = await checker.check_configured_providers(
+        Settings(anthropic_api_key="rate-limited-key")
+    )
+
+    assert checks[0].provider == "anthropic"
+    assert checks[0].ok is True
+    assert "rate limited" in checks[0].message
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_http_startup_checker_tests_claude_code_oauth_token_with_bearer_auth():
     captured = {}
 
