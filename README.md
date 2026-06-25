@@ -17,7 +17,7 @@ Supported providers:
 - Optional candidate tag list so the model chooses from your taxonomy
 - Optional explanations and confidence scores
 - Batch responses preserve input filenames
-- Provider errors are returned as HTTP 502; validation errors as HTTP 422
+- Provider rate limits are returned as HTTP 429; other provider errors as HTTP 502; validation errors as HTTP 422
 
 ## Quick start
 
@@ -67,6 +67,8 @@ For Claude Max/Pro subscription auth, generate a token with `claude setup-token`
 The startup Anthropic credential check intentionally uses `ANTHROPIC_STARTUP_CHECK_MODEL` instead of `DEFAULT_ANTHROPIC_MODEL`, so a stale request-default model cannot break the startup credential probe. Override `ANTHROPIC_STARTUP_CHECK_MODEL` only if Anthropic changes model availability for your account.
 
 If `DEFAULT_ANTHROPIC_MODEL` is still set to the deprecated `claude-3-5-sonnet-latest`, the API maps omitted-model Anthropic requests to `claude-sonnet-4-6`. You should still update the env file to avoid confusion.
+
+If Anthropic returns HTTP 429 during a real tag request, the Anthropic credential was accepted but the account/token is currently rate limited or out of available quota. Retry later, reduce request volume/image size, use an Anthropic Console API key with available credits/rate limit, or call another provider such as OpenAI/Gemini/Ollama.
 
 Startup check results are logged and exposed from `/health` under `credential_checks`. The server still starts if a credential is invalid so you can inspect `/health` and logs. Disable checks with:
 

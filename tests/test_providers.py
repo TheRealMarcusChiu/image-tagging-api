@@ -4,6 +4,7 @@ import json
 
 import httpx
 import pytest
+from fastapi import HTTPException
 
 from image_tagging_api.config import Settings
 from image_tagging_api.models import ImageTagResult, TaggingResponse
@@ -152,4 +153,45 @@ async def test_anthropic_provider_uses_claude_code_oauth_token_as_bearer_auth():
     assert "x-api-key" not in captured["headers"]
     assert captured["headers"]["anthropic-version"] == "2023-06-01"
     assert captured["body"]["model"] == "claude-sonnet-4-6"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_provider_rate_limit_is_returned_as_client_429():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            429,
+            json={
+                "type": "error",
+                "error": {"type": "rate_limit_error", "message": "Error"},
+                "request_id": "req_test",
+            },
+            headers={"retry-after": "30"},
+            request=request,
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tagger = MultiProviderImageTagger(Settings(openai_api_key="test-key"), client=client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await tagger.tag_images(
+            ProviderRequest(
+                provider="openai",
+                model="gpt-4.1-mini",
+                images=[
+                    ImageInput(
+                        filename="cat.png",
+                        content=b"image-bytes",
+                        mime_type="image/png",
+                    )
+                ],
+                candidate_tags=None,
+                max_tags=3,
+                include_explanations=True,
+            )
+        )
+
+    assert exc_info.value.status_code == 429
+    assert "rate limited" in exc_info.value.detail
+    assert "retry after 30 seconds" in exc_info.value.detail
     await client.aclose()

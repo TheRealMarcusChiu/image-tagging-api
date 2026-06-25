@@ -215,6 +215,16 @@ class MultiProviderImageTagger(ImageTagger):
         except HTTPException:
             raise
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+                retry_after = exc.response.headers.get("retry-after")
+                retry_hint = f"; retry after {retry_after} seconds" if retry_after else ""
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=(
+                        f"Provider {request.provider} rate limited the request{retry_hint}: "
+                        f"{exc.response.text}"
+                    ),
+                ) from exc
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=(
