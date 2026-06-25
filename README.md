@@ -130,6 +130,44 @@ curl -X POST http://localhost:8000/v1/tag/json \
   }"
 ```
 
+## Audio & video tagging
+
+The API can also tag **audio and video** files. Each upload is sent to a
+self-hosted [stt-tts](https://github.com/TheRealMarcusChiu/stt-tts) server for
+transcription, and the transcript is then tagged by the chosen LLM provider —
+so the tags describe what was *said*, not what is visible. Configure the service
+with `STT_TTS_BASE_URL` (default `https://stt-tts.lan`) and friends (see
+Environment variables).
+
+- `POST /v1/tag/audio` — multipart upload of one or more audio/video files
+- `POST /v1/tag/audio/json` — JSON API with base64-encoded media
+
+Any container the stt-tts server can decode works (mp3, wav, m4a, flac, ogg, and
+video such as mp4/mov/mkv/webm — the audio track is extracted automatically).
+
+```bash
+curl -X POST http://localhost:8000/v1/tag/audio \
+  -F provider=anthropic \
+  -F model=claude-sonnet-4-6 \
+  -F 'candidate_tags=["meeting","invoice","support","complaint"]' \
+  -F max_tags=5 \
+  -F language=en \
+  -F files=@/path/to/call.mp3 \
+  -F files=@/path/to/clip.mp4
+```
+
+The response shape matches the image endpoints (`filename`, `tags`,
+`confidence`, `explanation` per file). Notes:
+
+- Pick the transcription model with `STT_MODEL`; pick the tagging LLM with
+  `provider`/`model` per request, exactly like the image endpoints.
+- For a self-signed `.lan` certificate, set `STT_TTS_CA_CERT` to the CA bundle
+  or `STT_TTS_VERIFY_SSL=false`.
+- If tags come back empty, the transcript was probably empty — set
+  `STT_VAD_FILTER=false` so the stt-tts server's VAD doesn't drop quiet audio.
+- Uploads are read fully into memory before forwarding, so very large video
+  files are buffered; transcription itself is bounded by `STT_REQUEST_TIMEOUT_SECONDS`.
+
 ## Provider/model examples
 
 - OpenAI: `provider=openai`, `model=gpt-4.1-mini` or another vision-capable chat model

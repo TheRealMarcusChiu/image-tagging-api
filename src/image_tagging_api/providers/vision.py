@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -11,7 +12,12 @@ from pydantic import ValidationError
 
 from image_tagging_api.config import Settings
 from image_tagging_api.models import ImageTagResult, ModelTagOutput, ProviderName, TaggingResponse
-from image_tagging_api.providers.base import ImageInput, ImageTagger, ProviderRequest
+from image_tagging_api.providers.base import (
+    ImageInput,
+    ImageTagger,
+    ProviderRequest,
+    TranscriptTaggingRequest,
+)
 
 
 class ProviderError(RuntimeError):
@@ -41,6 +47,33 @@ Return strictly valid JSON with this shape:
 """.strip()
 
 
+def build_transcript_prompt(request: TranscriptTaggingRequest) -> str:
+    tag_instructions = (
+        "Choose only from this candidate tag list: " + ", ".join(request.candidate_tags)
+        if request.candidate_tags
+        else "Create concise, searchable tags that describe the spoken content."
+    )
+    explanations = (
+        "Include a short explanation for each item."
+        if request.include_explanations
+        else "Use null for explanation."
+    )
+    sections = "\n\n".join(
+        f'Transcript for "{transcript.filename}":\n{transcript.text or "(no speech detected)"}'
+        for transcript in request.transcripts
+    )
+    return f"""
+You are a media tagging service. Tag each item using only the spoken content in its transcript.
+{tag_instructions}
+Return at most {request.max_tags} tags per item.
+{explanations}
+Return strictly valid JSON with this shape:
+{{"images":[{{"filename":"example.mp4","tags":["tag1"],"confidence":0.0,"explanation":"..."}}]}}
+
+{sections}
+""".strip()
+
+
 def image_data_url(image: ImageInput) -> str:
     return f"data:{image.mime_type};base64,{base64.b64encode(image.content).decode()}"
 
@@ -66,7 +99,14 @@ def extract_json_object(text: str) -> dict[str, Any]:
         return json.loads(stripped[start : end + 1])
 
 
-def parse_model_output(text: str, request: ProviderRequest) -> TaggingResponse:
+def _assemble_tagging_response(
+    text: str,
+    *,
+    provider: ProviderName,
+    model: str,
+    filenames: list[str],
+    max_tags: int,
+) -> TaggingResponse:
     try:
         output = ModelTagOutput.model_validate(extract_json_object(text))
     except (json.JSONDecodeError, ValidationError, ProviderError) as exc:
@@ -74,19 +114,29 @@ def parse_model_output(text: str, request: ProviderRequest) -> TaggingResponse:
 
     by_filename = {result.filename: result for result in output.images}
     results: list[ImageTagResult] = []
-    for image in request.images:
-        result = by_filename.get(image.filename)
+    for filename in filenames:
+        result = by_filename.get(filename)
         if result is None:
             result = ImageTagResult(
-                filename=image.filename,
+                filename=filename,
                 tags=[],
                 confidence=None,
                 explanation="Provider response did not include this filename.",
             )
-        if len(result.tags) > request.max_tags:
-            result.tags = result.tags[: request.max_tags]
+        if len(result.tags) > max_tags:
+            result.tags = result.tags[:max_tags]
         results.append(result)
-    return TaggingResponse(provider=request.provider, model=request.model, results=results)
+    return TaggingResponse(provider=provider, model=model, results=results)
+
+
+def parse_model_output(text: str, request: ProviderRequest) -> TaggingResponse:
+    return _assemble_tagging_response(
+        text,
+        provider=request.provider,
+        model=request.model,
+        filenames=[image.filename for image in request.images],
+        max_tags=request.max_tags,
+    )
 
 
 class VisionProvider(ABC):
@@ -95,7 +145,8 @@ class VisionProvider(ABC):
         self.client = client or httpx.AsyncClient(timeout=settings.request_timeout_seconds)
 
     @abstractmethod
-    async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
+    async def complete(self, model: str, prompt: str, images: list[ImageInput]) -> str:
+        """Send a prompt (optionally with images) to the model and return raw text."""
         raise NotImplementedError
 
     def require_key(self, key: str | None, env_name: str) -> str:
@@ -108,28 +159,27 @@ class VisionProvider(ABC):
 
 
 class OpenAIProvider(VisionProvider):
-    async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
+    async def complete(self, model: str, prompt: str, images: list[ImageInput]) -> str:
         key = self.require_key(self.settings.openai_api_key, "OPENAI_API_KEY")
-        content: list[dict[str, Any]] = [{"type": "text", "text": build_prompt(request)}]
-        for image in request.images:
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        for image in images:
             content.append({"type": "image_url", "image_url": {"url": image_data_url(image)}})
         response = await self.client.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}"},
             json={
-                "model": request.model,
+                "model": model,
                 "messages": [{"role": "user", "content": content}],
                 "response_format": {"type": "json_object"},
                 "temperature": 0,
             },
         )
         response.raise_for_status()
-        text = response.json()["choices"][0]["message"]["content"]
-        return parse_model_output(text, request)
+        return response.json()["choices"][0]["message"]["content"]
 
 
 class AnthropicProvider(VisionProvider):
-    async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
+    async def complete(self, model: str, prompt: str, images: list[ImageInput]) -> str:
         auth_headers = self.settings.anthropic_auth_headers()
         if not auth_headers:
             raise HTTPException(
@@ -139,8 +189,8 @@ class AnthropicProvider(VisionProvider):
                     "CLAUDE_CODE_OAUTH_TOKEN is required for this provider."
                 ),
             )
-        content: list[dict[str, Any]] = [{"type": "text", "text": build_prompt(request)}]
-        for image in request.images:
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        for image in images:
             content.append(
                 {
                     "type": "image",
@@ -155,22 +205,21 @@ class AnthropicProvider(VisionProvider):
             "https://api.anthropic.com/v1/messages",
             headers={**auth_headers, "anthropic-version": "2023-06-01"},
             json={
-                "model": request.model,
+                "model": model,
                 "max_tokens": 2048,
                 "temperature": 0,
                 "messages": [{"role": "user", "content": content}],
             },
         )
         response.raise_for_status()
-        text = "".join(part.get("text", "") for part in response.json().get("content", []))
-        return parse_model_output(text, request)
+        return "".join(part.get("text", "") for part in response.json().get("content", []))
 
 
 class GeminiProvider(VisionProvider):
-    async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
+    async def complete(self, model: str, prompt: str, images: list[ImageInput]) -> str:
         key = self.require_key(self.settings.gemini_api_key, "GEMINI_API_KEY")
-        parts: list[dict[str, Any]] = [{"text": build_prompt(request)}]
-        for image in request.images:
+        parts: list[dict[str, Any]] = [{"text": prompt}]
+        for image in images:
             parts.append(
                 {
                     "inline_data": {
@@ -181,12 +230,11 @@ class GeminiProvider(VisionProvider):
             )
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{request.model}:generateContent?key={key}"
+            f"{model}:generateContent?key={key}"
         )
         response = await self.client.post(url, json={"contents": [{"parts": parts}]})
         response.raise_for_status()
-        text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-        return parse_model_output(text, request)
+        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
 class OllamaProvider(VisionProvider):
@@ -206,13 +254,13 @@ class OllamaProvider(VisionProvider):
             f"Payload excerpt: {OllamaProvider._payload_excerpt(payload)}"
         )
 
-    async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
+    async def complete(self, model: str, prompt: str, images: list[ImageInput]) -> str:
         response = await self.client.post(
             f"{self.settings.ollama_base_url.rstrip('/')}/api/generate",
             json={
-                "model": request.model,
-                "prompt": build_prompt(request),
-                "images": [base64.b64encode(image.content).decode() for image in request.images],
+                "model": model,
+                "prompt": prompt,
+                "images": [base64.b64encode(image.content).decode() for image in images],
                 "format": "json",
                 "think": False,
                 "options": {"temperature": 0},
@@ -221,7 +269,7 @@ class OllamaProvider(VisionProvider):
         )
         response.raise_for_status()
         payload = response.json()
-        return parse_model_output(self._extract_text_payload(payload), request)
+        return self._extract_text_payload(payload)
 
 
 class MultiProviderImageTagger(ImageTagger):
@@ -238,9 +286,11 @@ class MultiProviderImageTagger(ImageTagger):
         message = str(exc).strip()
         return message or exc.__class__.__name__
 
-    async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
+    async def _dispatch(
+        self, provider: ProviderName, work: Callable[[], Awaitable[TaggingResponse]]
+    ) -> TaggingResponse:
         try:
-            return await self.providers[request.provider].tag_images(request)
+            return await work()
         except HTTPException:
             raise
         except httpx.HTTPStatusError as exc:
@@ -250,14 +300,14 @@ class MultiProviderImageTagger(ImageTagger):
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail=(
-                        f"Provider {request.provider} rate limited the request{retry_hint}: "
+                        f"Provider {provider} rate limited the request{retry_hint}: "
                         f"{exc.response.text}"
                     ),
                 ) from exc
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=(
-                    f"Provider {request.provider} returned HTTP {exc.response.status_code}: "
+                    f"Provider {provider} returned HTTP {exc.response.status_code}: "
                     f"{exc.response.text}"
                 ),
             ) from exc
@@ -265,9 +315,50 @@ class MultiProviderImageTagger(ImageTagger):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=(
-                    f"Provider {request.provider} request failed: "
+                    f"Provider {provider} request failed: "
                     f"{self._describe_http_error(exc)}"
                 ),
             ) from exc
         except ProviderError as exc:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
+        async def work() -> TaggingResponse:
+            text = await self.providers[request.provider].complete(
+                request.model, build_prompt(request), request.images
+            )
+            return parse_model_output(text, request)
+
+        return await self._dispatch(request.provider, work)
+
+    async def tag_transcripts(self, request: TranscriptTaggingRequest) -> TaggingResponse:
+        if not any(transcript.text.strip() for transcript in request.transcripts):
+            # Nothing was transcribed (e.g. silent audio or VAD dropped everything);
+            # skip the LLM call and return empty tags for each item.
+            return TaggingResponse(
+                provider=request.provider,
+                model=request.model,
+                results=[
+                    ImageTagResult(
+                        filename=transcript.filename,
+                        tags=[],
+                        confidence=None,
+                        explanation="No speech detected.",
+                    )
+                    for transcript in request.transcripts
+                ],
+            )
+
+        async def work() -> TaggingResponse:
+            text = await self.providers[request.provider].complete(
+                request.model, build_transcript_prompt(request), []
+            )
+            return _assemble_tagging_response(
+                text,
+                provider=request.provider,
+                model=request.model,
+                filenames=[transcript.filename for transcript in request.transcripts],
+                max_tags=request.max_tags,
+            )
+
+        return await self._dispatch(request.provider, work)

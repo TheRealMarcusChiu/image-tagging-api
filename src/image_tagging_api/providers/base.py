@@ -25,3 +25,41 @@ class ProviderRequest:
 
 class ImageTagger(Protocol):
     async def tag_images(self, request: ProviderRequest) -> TaggingResponse: ...
+
+
+@dataclass(frozen=True)
+class MediaInput:
+    filename: str
+    content: bytes
+    mime_type: str
+    language: str | None = None
+
+
+@dataclass(frozen=True)
+class Transcript:
+    filename: str
+    text: str
+    language: str | None = None
+    duration: float | None = None
+
+
+@dataclass(frozen=True)
+class TranscriptTaggingRequest:
+    provider: ProviderName
+    model: str
+    transcripts: list[Transcript]
+    candidate_tags: list[str] | None
+    max_tags: int
+    include_explanations: bool
+
+
+class TranscriptionClient(Protocol):
+    async def transcribe(self, media: MediaInput) -> Transcript: ...
+
+
+class TranscriptTagger(Protocol):
+    async def tag_transcripts(self, request: TranscriptTaggingRequest) -> TaggingResponse: ...
+
+
+class Tagger(ImageTagger, TranscriptTagger, Protocol):
+    """A tagger that handles both image and transcript requests."""

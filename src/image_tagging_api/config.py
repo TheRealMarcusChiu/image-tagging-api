@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEPRECATED_ANTHROPIC_MODEL_ALIASES = {
@@ -32,7 +32,29 @@ class Settings(BaseSettings):
         default="claude-sonnet-4-6", alias="ANTHROPIC_STARTUP_CHECK_MODEL"
     )
 
+    # External speech-to-text service used to transcribe audio/video before tagging.
+    stt_tts_base_url: str = Field(default="https://stt-tts.lan", alias="STT_TTS_BASE_URL")
+    stt_model: str = Field(default="large-v3-turbo", alias="STT_MODEL")
+    stt_language: str | None = Field(default=None, alias="STT_LANGUAGE")
+    # None -> let the stt-tts server use its configured VAD default. Set false if
+    # transcripts come back empty (the VAD filter dropped the audio).
+    stt_vad_filter: bool | None = Field(default=None, alias="STT_VAD_FILTER")
+    stt_request_timeout_seconds: float = 300.0
+    # TLS for the stt-tts URL. For a self-signed .lan certificate either point
+    # STT_TTS_CA_CERT at the CA bundle or set STT_TTS_VERIFY_SSL=false.
+    stt_tts_verify_ssl: bool = Field(default=True, alias="STT_TTS_VERIFY_SSL")
+    stt_tts_ca_cert: str | None = Field(default=None, alias="STT_TTS_CA_CERT")
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
+
+    @field_validator("stt_vad_filter", mode="before")
+    @classmethod
+    def _blank_to_none(cls, value: object) -> object:
+        # A blank env value (e.g. ``STT_VAD_FILTER=`` in .env) means "unset";
+        # treat it as None instead of letting bool parsing reject the empty string.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     def default_model_for(self, provider: str) -> str:
         defaults = {

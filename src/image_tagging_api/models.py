@@ -31,6 +31,31 @@ class JsonTaggingRequest(BaseModel):
         return cleaned or None
 
 
+class MediaPayload(BaseModel):
+    filename: str = Field(min_length=1)
+    content_base64: str = Field(min_length=1)
+    mime_type: str | None = None
+    language: str | None = None
+
+
+class JsonAudioTaggingRequest(BaseModel):
+    provider: ProviderName = "openai"
+    model: str | None = None
+    candidate_tags: list[str] | None = None
+    max_tags: int = Field(default=10, ge=1, le=100)
+    include_explanations: bool = True
+    language: str | None = None
+    media: list[MediaPayload] = Field(min_length=1, max_length=100)
+
+    @field_validator("candidate_tags")
+    @classmethod
+    def normalize_candidate_tags(cls, tags: list[str] | None) -> list[str] | None:
+        if tags is None:
+            return None
+        cleaned = [tag.strip() for tag in tags if tag.strip()]
+        return cleaned or None
+
+
 class ImageTagResult(BaseModel):
     filename: str
     tags: list[str]
