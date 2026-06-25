@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 import uvicorn
@@ -16,6 +17,11 @@ from image_tagging_api.models import (
     TaggingResponse,
 )
 from image_tagging_api.providers.base import ImageInput, ImageTagger, ProviderRequest
+from image_tagging_api.providers.healthcheck import (
+    HttpProviderStartupChecker,
+    ProviderCredentialCheck,
+    ProviderStartupChecker,
+)
 from image_tagging_api.providers.vision import MultiProviderImageTagger
 
 
@@ -62,9 +68,20 @@ def parse_candidate_tags(candidate_tags: str | None) -> list[str] | None:
     return cleaned or None
 
 
-def create_app(settings: Settings | None = None, tagger: ImageTagger | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    tagger: ImageTagger | None = None,
+    startup_checker: ProviderStartupChecker | None = None,
+) -> FastAPI:
     settings = settings or Settings()
     tagger = tagger or MultiProviderImageTagger(settings)
+    startup_checker = startup_checker or HttpProviderStartupChecker()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
+        checks = await startup_checker.check_configured_providers(settings)
+        app.state.provider_credential_checks = checks
+        yield
 
     app = FastAPI(
         title=settings.app_name,
@@ -72,6 +89,7 @@ def create_app(settings: Settings | None = None, tagger: ImageTagger | None = No
         description=(
             "Tag one image or a batch of images using OpenAI, Anthropic, Gemini, or Ollama."
         ),
+        lifespan=lifespan,
     )
 
     def get_settings() -> Settings:
@@ -83,9 +101,15 @@ def create_app(settings: Settings | None = None, tagger: ImageTagger | None = No
     settings_dependency = Depends(get_settings)
     tagger_dependency = Depends(get_tagger)
 
+    def credential_checks() -> list[ProviderCredentialCheck]:
+        return getattr(app.state, "provider_credential_checks", [])
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
-        return HealthResponse(providers=SUPPORTED_PROVIDERS)
+        return HealthResponse(
+            providers=SUPPORTED_PROVIDERS,
+            credential_checks=[check.model_dump() for check in credential_checks()],
+        )
 
     @app.post("/v1/tag/json", response_model=TaggingResponse)
     async def tag_images_json(

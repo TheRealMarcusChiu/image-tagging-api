@@ -38,12 +38,26 @@ OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=...
 OLLAMA_BASE_URL=http://localhost:11434
+VALIDATE_PROVIDER_CREDENTIALS_ON_STARTUP=true
+STARTUP_CHECK_TIMEOUT_SECONDS=10
 ```
 
 Only set the keys for providers you intend to use. Ollama needs a local vision-capable model, for example:
 
 ```bash
 ollama pull llava:latest
+```
+
+On application startup, the server performs lightweight credential checks for configured cloud API keys:
+
+- `ANTHROPIC_API_KEY` is checked with a small Anthropic `/v1/messages` call.
+- `OPENAI_API_KEY` is checked against OpenAI `/v1/models`.
+- `GEMINI_API_KEY` is checked against Gemini model listing.
+
+Startup check results are logged and exposed from `/health` under `credential_checks`. The server still starts if a key is invalid so you can inspect `/health` and logs. Disable checks with:
+
+```env
+VALIDATE_PROVIDER_CREDENTIALS_ON_STARTUP=false
 ```
 
 ## Multipart API

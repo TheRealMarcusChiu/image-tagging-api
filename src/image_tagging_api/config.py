@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
 
     request_timeout_seconds: float = 60.0
+    validate_provider_credentials_on_startup: bool = True
+    startup_check_timeout_seconds: float = 10.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 

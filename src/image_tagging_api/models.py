@@ -48,6 +48,7 @@ class TaggingResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str = "ok"
     providers: tuple[str, ...]
+    credential_checks: list[dict] = Field(default_factory=list)
 
 
 class ModelTagOutput(BaseModel):
