@@ -1,0 +1,27 @@
+[Unit]
+Description=Image Tagging API
+Documentation=https://github.com/TheRealMarcusChiu/image-tagging-api
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=image-tagging-api
+Group=image-tagging-api
+WorkingDirectory=/opt/image-tagging-api
+EnvironmentFile=-/etc/image-tagging-api/image-tagging-api.env
+ExecStart=/opt/image-tagging-api/.venv/bin/uvicorn image_tagging_api.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/image-tagging-api
+
+[Install]
+WantedBy=multi-user.target

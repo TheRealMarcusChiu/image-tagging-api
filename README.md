@@ -116,6 +116,33 @@ docker build -t image-tagging-api .
 docker run --rm -p 8000:8000 --env-file .env image-tagging-api
 ```
 
+## systemd service
+
+The repo includes `image-tagging-api.service` for running the API directly on a Linux server or Proxmox LXC container.
+
+Example install path:
+
+```bash
+sudo useradd --system --home /opt/image-tagging-api --shell /usr/sbin/nologin image-tagging-api
+sudo mkdir -p /opt/image-tagging-api /etc/image-tagging-api
+sudo chown image-tagging-api:image-tagging-api /opt/image-tagging-api
+
+sudo -u image-tagging-api git clone https://github.com/TheRealMarcusChiu/image-tagging-api.git /opt/image-tagging-api
+cd /opt/image-tagging-api
+sudo -u image-tagging-api python3 -m venv .venv
+sudo -u image-tagging-api .venv/bin/pip install .
+
+sudo cp .env.example /etc/image-tagging-api/image-tagging-api.env
+sudo nano /etc/image-tagging-api/image-tagging-api.env
+
+sudo cp image-tagging-api.service /etc/systemd/system/image-tagging-api.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now image-tagging-api
+sudo systemctl status image-tagging-api
+```
+
+The service listens on port `8000` by default. Change the `ExecStart` line in `image-tagging-api.service` if you want a different host or port.
+
 ## Development
 
 ```bash
