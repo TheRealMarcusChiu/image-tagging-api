@@ -195,6 +195,17 @@ class OllamaProvider(VisionProvider):
         serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         return serialized[:500] + ("..." if len(serialized) > 500 else "")
 
+    @staticmethod
+    def _extract_text_payload(payload: dict[str, Any]) -> str:
+        for field in ("response", "thinking"):
+            value = payload.get(field)
+            if isinstance(value, str) and value.strip():
+                return value
+        raise ProviderError(
+            "Ollama returned an empty response field. "
+            f"Payload excerpt: {OllamaProvider._payload_excerpt(payload)}"
+        )
+
     async def tag_images(self, request: ProviderRequest) -> TaggingResponse:
         response = await self.client.post(
             f"{self.settings.ollama_base_url.rstrip('/')}/api/generate",
@@ -210,13 +221,7 @@ class OllamaProvider(VisionProvider):
         )
         response.raise_for_status()
         payload = response.json()
-        text = payload.get("response")
-        if not isinstance(text, str) or not text.strip():
-            raise ProviderError(
-                "Ollama returned an empty response field. "
-                f"Payload excerpt: {self._payload_excerpt(payload)}"
-            )
-        return parse_model_output(text, request)
+        return parse_model_output(self._extract_text_payload(payload), request)
 
 
 class MultiProviderImageTagger(ImageTagger):

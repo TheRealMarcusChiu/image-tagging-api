@@ -219,6 +219,56 @@ async def test_ollama_provider_disables_thinking_and_requests_json_output():
 
 
 @pytest.mark.asyncio
+async def test_ollama_provider_falls_back_to_thinking_field_when_response_empty():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "qwen3-vl:8b",
+                "response": "",
+                "thinking": json.dumps(
+                    {
+                        "images": [
+                            {
+                                "filename": "cat.png",
+                                "tags": ["cat"],
+                                "confidence": 0.9,
+                                "explanation": "A cat.",
+                            }
+                        ]
+                    }
+                ),
+                "done": True,
+                "done_reason": "stop",
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tagger = MultiProviderImageTagger(Settings(), client=client)
+
+    response = await tagger.tag_images(
+        ProviderRequest(
+            provider="ollama",
+            model="qwen3-vl:8b",
+            images=[
+                ImageInput(
+                    filename="cat.png",
+                    content=b"image-bytes",
+                    mime_type="image/png",
+                )
+            ],
+            candidate_tags=None,
+            max_tags=3,
+            include_explanations=True,
+        )
+    )
+
+    assert response.results[0].tags == ["cat"]
+    assert response.results[0].confidence == 0.9
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_ollama_provider_reports_empty_response_with_raw_payload_details():
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
