@@ -40,9 +40,11 @@ class Settings(BaseSettings):
     # transcripts come back empty (the VAD filter dropped the audio).
     stt_vad_filter: bool | None = Field(default=None, alias="STT_VAD_FILTER")
     stt_request_timeout_seconds: float = 300.0
-    # TLS for the stt-tts URL. For a self-signed .lan certificate either point
-    # STT_TTS_CA_CERT at the CA bundle or set STT_TTS_VERIFY_SSL=false.
-    stt_tts_verify_ssl: bool = Field(default=True, alias="STT_TTS_VERIFY_SSL")
+    # TLS for the stt-tts URL. Verification is OFF by default because the stt-tts
+    # server typically runs with a self-signed .lan certificate. Set
+    # STT_TTS_VERIFY_SSL=true to enforce verification, optionally pointing
+    # STT_TTS_CA_CERT at the CA bundle (a CA path takes precedence and verifies).
+    stt_tts_verify_ssl: bool = Field(default=False, alias="STT_TTS_VERIFY_SSL")
     stt_tts_ca_cert: str | None = Field(default=None, alias="STT_TTS_CA_CERT")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)

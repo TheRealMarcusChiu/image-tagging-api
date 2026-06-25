@@ -161,8 +161,10 @@ The response shape matches the image endpoints (`filename`, `tags`,
 
 - Pick the transcription model with `STT_MODEL`; pick the tagging LLM with
   `provider`/`model` per request, exactly like the image endpoints.
-- For a self-signed `.lan` certificate, set `STT_TTS_CA_CERT` to the CA bundle
-  or `STT_TTS_VERIFY_SSL=false`.
+- TLS verification for `STT_TTS_BASE_URL` is **off by default**, since stt-tts
+  usually runs with a self-signed `.lan` certificate. To enforce verification,
+  set `STT_TTS_VERIFY_SSL=true` and optionally point `STT_TTS_CA_CERT` at the CA
+  bundle (a CA path takes precedence and verifies).
 - If tags come back empty, the transcript was probably empty — set
   `STT_VAD_FILTER=false` so the stt-tts server's VAD doesn't drop quiet audio.
 - Uploads are read fully into memory before forwarding, so very large video
