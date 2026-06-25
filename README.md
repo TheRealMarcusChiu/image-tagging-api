@@ -109,7 +109,7 @@ curl -X POST http://localhost:8000/v1/tag/json \
   -H 'Content-Type: application/json' \
   -d "{
     \"provider\": \"anthropic\",
-    \"model\": \"claude-3-5-sonnet-latest\",
+    \"model\": \"claude-sonnet-4-6\",
     \"candidate_tags\": [\"cat\", \"dog\", \"indoor\"],
     \"max_tags\": 5,
     \"include_explanations\": true,
@@ -126,7 +126,7 @@ curl -X POST http://localhost:8000/v1/tag/json \
 ## Provider/model examples
 
 - OpenAI: `provider=openai`, `model=gpt-4.1-mini` or another vision-capable chat model
-- Anthropic: `provider=anthropic`, `model=claude-3-5-sonnet-latest`
+- Anthropic: `provider=anthropic`, `model=claude-sonnet-4-6`
 - Gemini: `provider=gemini`, `model=gemini-2.0-flash`
 - Ollama: `provider=ollama`, `model=llava:latest`
 

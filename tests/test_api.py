@@ -59,7 +59,7 @@ def test_multipart_endpoint_tags_batch_and_forwards_model_choice():
         "/v1/tag",
         data={
             "provider": "anthropic",
-            "model": "claude-3-5-sonnet-latest",
+            "model": "claude-sonnet-4-6",
             "candidate_tags": '["cat", "dog", "indoor"]',
             "max_tags": "2",
             "include_explanations": "true",
@@ -73,13 +73,13 @@ def test_multipart_endpoint_tags_batch_and_forwards_model_choice():
     assert response.status_code == 200
     body = response.json()
     assert body["provider"] == "anthropic"
-    assert body["model"] == "claude-3-5-sonnet-latest"
+    assert body["model"] == "claude-sonnet-4-6"
     assert [result["filename"] for result in body["results"]] == ["first.png", "second.png"]
     assert body["results"][0]["tags"] == ["cat", "indoor"]
 
     forwarded = tagger.calls[0]
     assert forwarded.provider == "anthropic"
-    assert forwarded.model == "claude-3-5-sonnet-latest"
+    assert forwarded.model == "claude-sonnet-4-6"
     assert forwarded.candidate_tags == ["cat", "dog", "indoor"]
     assert forwarded.max_tags == 2
     assert forwarded.include_explanations is True

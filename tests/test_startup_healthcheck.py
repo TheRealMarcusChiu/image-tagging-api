@@ -36,7 +36,7 @@ async def test_http_startup_checker_tests_anthropic_key_with_messages_endpoint()
     assert captured["url"] == "https://api.anthropic.com/v1/messages"
     assert captured["headers"]["x-api-key"] == "sk-ant-test"
     assert captured["headers"]["anthropic-version"] == "2023-06-01"
-    assert captured["body"]["model"] == "claude-3-5-sonnet-latest"
+    assert captured["body"]["model"] == "claude-sonnet-4-6"
     await client.aclose()
 
 

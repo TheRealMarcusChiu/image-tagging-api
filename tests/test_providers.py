@@ -139,7 +139,7 @@ async def test_anthropic_provider_uses_claude_code_oauth_token_as_bearer_auth():
     response = await tagger.tag_images(
         ProviderRequest(
             provider="anthropic",
-            model="claude-3-5-sonnet-latest",
+            model="claude-sonnet-4-6",
             images=[ImageInput(filename="cat.png", content=b"image-bytes", mime_type="image/png")],
             candidate_tags=None,
             max_tags=3,
@@ -151,5 +151,5 @@ async def test_anthropic_provider_uses_claude_code_oauth_token_as_bearer_auth():
     assert captured["headers"]["authorization"] == "Bearer oauth-token"
     assert "x-api-key" not in captured["headers"]
     assert captured["headers"]["anthropic-version"] == "2023-06-01"
-    assert captured["body"]["model"] == "claude-3-5-sonnet-latest"
+    assert captured["body"]["model"] == "claude-sonnet-4-6"
     await client.aclose()

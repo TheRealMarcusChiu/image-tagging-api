@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     app_name: str = "Image Tagging API"
     default_provider: str = "openai"
     default_openai_model: str = "gpt-4.1-mini"
-    default_anthropic_model: str = "claude-3-5-sonnet-latest"
+    default_anthropic_model: str = "claude-sonnet-4-6"
     default_gemini_model: str = "gemini-2.0-flash"
     default_ollama_model: str = "llava:latest"
 
