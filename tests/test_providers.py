@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import json
+
+import httpx
+import pytest
+
+from image_tagging_api.config import Settings
+from image_tagging_api.models import ImageTagResult, TaggingResponse
+from image_tagging_api.providers.base import ImageInput, ProviderRequest
+from image_tagging_api.providers.vision import MultiProviderImageTagger, parse_model_output
+
+
+@pytest.fixture
+def provider_request() -> ProviderRequest:
+    return ProviderRequest(
+        provider="openai",
+        model="gpt-4.1-mini",
+        images=[ImageInput(filename="cat.png", content=b"image-bytes", mime_type="image/png")],
+        candidate_tags=["cat", "dog"],
+        max_tags=3,
+        include_explanations=True,
+    )
+
+
+def test_parse_model_output_maps_results_to_input_order(provider_request: ProviderRequest):
+    output = json.dumps(
+        {
+            "images": [
+                {
+                    "filename": "cat.png",
+                    "tags": ["cat", "indoor", "pet", "extra"],
+                    "confidence": 0.88,
+                    "explanation": "A cat is visible.",
+                }
+            ]
+        }
+    )
+
+    response = parse_model_output(output, provider_request)
+
+    assert response == TaggingResponse(
+        provider="openai",
+        model="gpt-4.1-mini",
+        results=[
+            ImageTagResult(
+                filename="cat.png",
+                tags=["cat", "indoor", "pet"],
+                confidence=0.88,
+                explanation="A cat is visible.",
+            )
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_uses_selected_model_and_image_payload(
+    provider_request: ProviderRequest,
+):
+    captured = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "images": [
+                                        {
+                                            "filename": "cat.png",
+                                            "tags": ["cat"],
+                                            "confidence": 0.9,
+                                            "explanation": "A cat.",
+                                        }
+                                    ]
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tagger = MultiProviderImageTagger(Settings(openai_api_key="test-key"), client=client)
+
+    response = await tagger.tag_images(provider_request)
+
+    assert response.results[0].tags == ["cat"]
+    assert captured["headers"]["authorization"] == "Bearer test-key"
+    assert captured["body"]["model"] == "gpt-4.1-mini"
+    assert captured["body"]["messages"][0]["content"][1]["image_url"]["url"].startswith(
+        "data:image/png;base64,"
+    )
+    await client.aclose()
