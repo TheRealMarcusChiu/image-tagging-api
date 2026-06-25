@@ -41,6 +41,7 @@ You are an image tagging service. Tag each input image by visible content only.
 Images: {filenames}
 {tag_instructions}
 Return at most {request.max_tags} tags per image.
+Write multi-word tags with spaces (e.g. "wedding vows"), not underscores or camelCase.
 {explanations}
 Return strictly valid JSON with this shape:
 {{"images":[{{"filename":"example.jpg","tags":["tag1"],"confidence":0.0,"explanation":"..."}}]}}
@@ -66,12 +67,20 @@ def build_transcript_prompt(request: TranscriptTaggingRequest) -> str:
 You are a media tagging service. Tag each item using only the spoken content in its transcript.
 {tag_instructions}
 Return at most {request.max_tags} tags per item.
+Write multi-word tags with spaces (e.g. "wedding vows"), not underscores or camelCase.
 {explanations}
 Return strictly valid JSON with this shape:
 {{"images":[{{"filename":"example.mp4","tags":["tag1"],"confidence":0.0,"explanation":"..."}}]}}
 
 {sections}
 """.strip()
+
+
+def normalize_tag(tag: str) -> str:
+    """Render a tag as a human-readable phrase: underscores become spaces and
+    surrounding/duplicate whitespace is collapsed (e.g. ``wedding_vows`` ->
+    ``wedding vows``)."""
+    return " ".join(tag.replace("_", " ").split())
 
 
 def image_data_url(image: ImageInput) -> str:
@@ -123,8 +132,9 @@ def _assemble_tagging_response(
                 confidence=None,
                 explanation="Provider response did not include this filename.",
             )
-        if len(result.tags) > max_tags:
-            result.tags = result.tags[:max_tags]
+        result.tags = [
+            cleaned for tag in result.tags[:max_tags] if (cleaned := normalize_tag(tag))
+        ]
         results.append(result)
     return TaggingResponse(provider=provider, model=model, results=results)
 

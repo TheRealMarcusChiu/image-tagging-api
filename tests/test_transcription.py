@@ -11,7 +11,7 @@ from image_tagging_api.providers.transcription import (
     SttTtsTranscriptionClient,
     TranscriptionError,
 )
-from image_tagging_api.providers.vision import MultiProviderImageTagger
+from image_tagging_api.providers.vision import MultiProviderImageTagger, normalize_tag
 
 
 @pytest.mark.asyncio
@@ -64,6 +64,60 @@ async def test_transcription_client_maps_http_error_to_transcription_error():
         )
 
     assert "HTTP 503" in str(exc_info.value)
+    await client.aclose()
+
+
+def test_normalize_tag_converts_underscores_to_spaces():
+    assert normalize_tag("wedding_vows") == "wedding vows"
+    assert normalize_tag("yes_i_do") == "yes i do"
+    assert normalize_tag("  multiple__under_scores ") == "multiple under scores"
+    assert normalize_tag("already spaced") == "already spaced"
+
+
+@pytest.mark.asyncio
+async def test_tag_transcripts_renders_tags_with_spaces():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "images": [
+                                        {
+                                            "filename": "vows.mp4",
+                                            "tags": ["wedding_vows", "yes_i_do"],
+                                            "confidence": 0.9,
+                                            "explanation": "A wedding ceremony.",
+                                        }
+                                    ]
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tagger = MultiProviderImageTagger(Settings(openai_api_key="test-key"), client=client)
+
+    response = await tagger.tag_transcripts(
+        TranscriptTaggingRequest(
+            provider="openai",
+            model="gpt-4.1-mini",
+            transcripts=[
+                Transcript(filename="vows.mp4", text="I do.", language="en", duration=3.0)
+            ],
+            candidate_tags=None,
+            max_tags=5,
+            include_explanations=True,
+        )
+    )
+
+    assert response.results[0].tags == ["wedding vows", "yes i do"]
     await client.aclose()
 
 
