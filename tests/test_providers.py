@@ -54,6 +54,21 @@ def test_parse_model_output_maps_results_to_input_order(provider_request: Provid
     )
 
 
+def test_parse_model_output_includes_response_excerpt_when_provider_returns_no_json(
+    provider_request: ProviderRequest,
+):
+    with pytest.raises(Exception) as exc_info:
+        parse_model_output(
+            "I see a blue shirt hanging on a hanger with short sleeves.",
+            provider_request,
+        )
+
+    assert str(exc_info.value) == (
+        "Could not parse provider response: Provider did not return JSON. "
+        "Response excerpt: I see a blue shirt hanging on a hanger with short sleeves."
+    )
+
+
 @pytest.mark.asyncio
 async def test_openai_provider_uses_selected_model_and_image_payload(
     provider_request: ProviderRequest,

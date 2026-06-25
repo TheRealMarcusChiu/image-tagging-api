@@ -57,7 +57,12 @@ def extract_json_object(text: str) -> dict[str, Any]:
         start = stripped.find("{")
         end = stripped.rfind("}")
         if start == -1 or end == -1 or end <= start:
-            raise ProviderError("Provider did not return JSON") from None
+            excerpt = stripped.replace("\n", " ")[:200].strip()
+            suffix = "..." if len(stripped.replace("\n", " ").strip()) > 200 else ""
+            raise ProviderError(
+                "Provider did not return JSON. "
+                f"Response excerpt: {excerpt}{suffix}"
+            ) from None
         return json.loads(stripped[start : end + 1])
 
 
