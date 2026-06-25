@@ -193,6 +193,8 @@ class OllamaProvider(VisionProvider):
                 "prompt": build_prompt(request),
                 "images": [base64.b64encode(image.content).decode() for image in request.images],
                 "format": "json",
+                "think": False,
+                "options": {"temperature": 0},
                 "stream": False,
             },
         )

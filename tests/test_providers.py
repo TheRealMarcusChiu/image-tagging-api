@@ -157,6 +157,53 @@ async def test_anthropic_provider_uses_claude_code_oauth_token_as_bearer_auth():
 
 
 @pytest.mark.asyncio
+async def test_ollama_provider_disables_thinking_and_requests_json_output():
+    captured = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "response": json.dumps(
+                    {
+                        "images": [
+                            {
+                                "filename": "cat.png",
+                                "tags": ["cat"],
+                                "confidence": 0.9,
+                                "explanation": "A cat.",
+                            }
+                        ]
+                    }
+                )
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tagger = MultiProviderImageTagger(Settings(), client=client)
+
+    response = await tagger.tag_images(
+        ProviderRequest(
+            provider="ollama",
+            model="qwen3-vl:8b",
+            images=[ImageInput(filename="cat.png", content=b"image-bytes", mime_type="image/png")],
+            candidate_tags=None,
+            max_tags=3,
+            include_explanations=True,
+        )
+    )
+
+    assert response.results[0].tags == ["cat"]
+    assert captured["body"]["model"] == "qwen3-vl:8b"
+    assert captured["body"]["format"] == "json"
+    assert captured["body"]["stream"] is False
+    assert captured["body"]["think"] is False
+    assert captured["body"]["options"]["temperature"] == 0
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_provider_rate_limit_is_returned_as_client_429():
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
