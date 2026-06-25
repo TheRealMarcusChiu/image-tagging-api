@@ -219,6 +219,51 @@ async def test_ollama_provider_disables_thinking_and_requests_json_output():
 
 
 @pytest.mark.asyncio
+async def test_ollama_provider_reports_empty_response_with_raw_payload_details():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "qwen3-vl:8b",
+                "response": "",
+                "done": True,
+                "done_reason": "stop",
+                "total_duration": 123,
+                "eval_count": 456,
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    tagger = MultiProviderImageTagger(Settings(), client=client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await tagger.tag_images(
+            ProviderRequest(
+                provider="ollama",
+                model="qwen3-vl:8b",
+                images=[
+                    ImageInput(
+                        filename="cat.png",
+                        content=b"image-bytes",
+                        mime_type="image/png",
+                    )
+                ],
+                candidate_tags=None,
+                max_tags=3,
+                include_explanations=True,
+            )
+        )
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == (
+        "Ollama returned an empty response field. "
+        'Payload excerpt: {"model":"qwen3-vl:8b","response":"","done":true,'
+        '"done_reason":"stop","total_duration":123,"eval_count":456}'
+    )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_provider_rate_limit_is_returned_as_client_429():
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
