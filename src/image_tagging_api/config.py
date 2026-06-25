@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 60.0
     validate_provider_credentials_on_startup: bool = True
     startup_check_timeout_seconds: float = 10.0
+    anthropic_startup_check_model: str = Field(
+        default="claude-sonnet-4-6", alias="ANTHROPIC_STARTUP_CHECK_MODEL"
+    )
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
 

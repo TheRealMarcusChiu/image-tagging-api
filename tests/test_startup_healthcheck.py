@@ -41,6 +41,31 @@ async def test_http_startup_checker_tests_anthropic_key_with_messages_endpoint()
 
 
 @pytest.mark.asyncio
+async def test_http_startup_checker_does_not_use_default_anthropic_model_override():
+    captured = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "ok"}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    checker = HttpProviderStartupChecker(client=client)
+
+    checks = await checker.check_configured_providers(
+        Settings(
+            anthropic_api_key="sk-ant-test",
+            default_anthropic_model="claude-3-5-sonnet-latest",
+            openai_api_key=None,
+            gemini_api_key=None,
+        )
+    )
+
+    assert checks[0].ok is True
+    assert captured["body"]["model"] == "claude-sonnet-4-6"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_http_startup_checker_reports_invalid_anthropic_key():
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

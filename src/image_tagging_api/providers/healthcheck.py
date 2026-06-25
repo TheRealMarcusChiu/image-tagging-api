@@ -74,7 +74,7 @@ class HttpProviderStartupChecker:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": settings.default_anthropic_model,
+                    "model": settings.anthropic_startup_check_model,
                     "max_tokens": 8,
                     "messages": [{"role": "user", "content": "Reply with ok."}],
                 },

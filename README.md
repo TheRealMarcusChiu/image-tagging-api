@@ -44,6 +44,7 @@ GEMINI_API_KEY=...
 OLLAMA_BASE_URL=http://localhost:11434
 VALIDATE_PROVIDER_CREDENTIALS_ON_STARTUP=true
 STARTUP_CHECK_TIMEOUT_SECONDS=10
+ANTHROPIC_STARTUP_CHECK_MODEL=claude-sonnet-4-6
 ```
 
 Only set the keys for providers you intend to use. Ollama needs a local vision-capable model, for example:
@@ -62,6 +63,8 @@ On application startup, the server performs lightweight credential checks for co
 - `GEMINI_API_KEY` is checked against Gemini model listing.
 
 For Claude Max/Pro subscription auth, generate a token with `claude setup-token` and set it as `CLAUDE_CODE_OAUTH_TOKEN`. This sends the token as `Authorization: Bearer ...`. Anthropic documents this token for Claude Code; using it from this API is best-effort and may fail if Anthropic restricts subscription OAuth tokens outside Claude Code.
+
+The startup Anthropic credential check intentionally uses `ANTHROPIC_STARTUP_CHECK_MODEL` instead of `DEFAULT_ANTHROPIC_MODEL`, so a stale request-default model cannot break the startup credential probe. Override `ANTHROPIC_STARTUP_CHECK_MODEL` only if Anthropic changes model availability for your account.
 
 Startup check results are logged and exposed from `/health` under `credential_checks`. The server still starts if a credential is invalid so you can inspect `/health` and logs. Disable checks with:
 
